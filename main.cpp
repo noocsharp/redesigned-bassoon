@@ -1,7 +1,8 @@
 #include <curses.h>
 #include <list>
+#include <typeinfo>
 
-using namespace std;
+using std::list;
 
 
 
@@ -23,19 +24,20 @@ class NonPlayer {
         int x, y, w, h;
 };
 
-void DrawDialog(WINDOW *win);
-void gameLoop();
-void IncrementDialogState(WINDOW * win);
-void DecrementDialogState(WINDOW * win);
-void DrawLevel(WINDOW * win, list<NonPlayer*>);
-int DialogState = 0;
-int DialogLength = 4;
-int segment = 0;
-
 class Door : public NonPlayer {
     public:
         Door(int ix, int iy, int iw, int ih):NonPlayer(ix, iy, iw, ih){};
-        virtual void Draw(WINDOW *win);
+        void Draw(WINDOW *win);
+};
+
+class Triangle : public NonPlayer {
+    public:
+        Triangle(int ix, int iy, int iw, int ih):NonPlayer(ix, iy, iw, ih){hidden = false;};
+        void Draw(WINDOW *win);
+        void hide();
+
+    private:
+        bool hidden;
 };
 
 class Player {
@@ -43,6 +45,8 @@ class Player {
         Player(int ix, int iy);
         void Draw(WINDOW *win);
         bool HasCollidedWithDoor(Door * door);
+        bool HasCollidedWithTriangle(Triangle * tri);
+        void ResetPosition();
         int GetX() const { return x; };
         void SetX(int ix) {x = ix;};
         int GetY() const { return y; };
@@ -54,6 +58,15 @@ class Player {
         int x, y, w, h;
 };
 
+void DrawDialog(WINDOW *win);
+void gameLoop();
+void IncrementDialogState(WINDOW * win);
+void DecrementDialogState(WINDOW * win);
+void DrawLevel(WINDOW * win, list<NonPlayer*>);
+void ChangeLevel(WINDOW * win, list<NonPlayer*> &objs, int level, Player &player);
+int DialogState = 0;
+int DialogLength = 5;
+
 NonPlayer::NonPlayer(int ix, int iy, int iw, int ih) {
     x = ix;
     y = ix;
@@ -61,14 +74,12 @@ NonPlayer::NonPlayer(int ix, int iy, int iw, int ih) {
     h = ih;
 }
 
-
 Player::Player(int ix, int iy) {
     x = ix;
     y = ix;
     w = 3;
     h = 3;
 }
-
 
 void NonPlayer::Draw(WINDOW *win) {
     mvwaddch(win, x, y, 'N');
@@ -100,6 +111,31 @@ void Door::Draw(WINDOW *win) {
     }
 }
 
+void Triangle::hide() {
+    hidden = true;
+}
+void Triangle::Draw(WINDOW *win) {
+    if (!hidden) {
+    
+        for (int i = 0; i<w; ++i) {
+            mvwaddch(win, y+h, x+i, '_');
+        } 
+
+        if (x%2==0) {
+            for (int j = 0; j<h; ++j) {
+                mvwaddch(win, y+j+1, x+(w/2)-1-j, '/');
+                mvwaddch(win, y+j+1, x+(w/2)+1+j, '\\');
+            }
+        } else {
+            for (int j = 0; j<h; ++j) {
+                mvwaddch(win, y+j+1, x+(w/2)-1-j, '/');
+                mvwaddch(win, y+j+1, x+(w/2)+1+j, '\\');
+            }
+            mvwaddch(win, y, x, '_');
+        }
+    }
+}
+
 bool Player::HasCollidedWithDoor(Door * door) {
     if ((x+w-1>=door->GetX() && x+w-1<=door->GetX()+door->GetW()-1 && y+h-1>=door->GetY() && y+h-1<=door->GetY()+door->GetH()-1) ||
         (x>=door->GetX() && x<=door->GetX()+door->GetW()-1 && y+h-1>=door->GetY() && y+h-1<=door->GetY()+door->GetH()-1) ||
@@ -108,6 +144,21 @@ bool Player::HasCollidedWithDoor(Door * door) {
         return true;
     }
     return false;
+}
+
+bool Player::HasCollidedWithTriangle(Triangle * tri) {
+    if ((x+w-1>=tri->GetX() && x+w-1<=tri->GetX()+tri->GetW()-1 && y+h-1>=tri->GetY() && y+h-1<=tri->GetY()+tri->GetH()-1) ||
+        (x>=tri->GetX() && x<=tri->GetX()+tri->GetW()-1 && y+h-1>=tri->GetY() && y+h-1<=tri->GetY()+tri->GetH()-1) ||
+        (x>=tri->GetX() && x<=tri->GetX()+tri->GetW()-1 && y>=tri->GetY() && y<=tri->GetY()+tri->GetH()-1) ||
+        (x+w-1>=tri->GetX() && x+w-1<=tri->GetX()+tri->GetW()-1 && y>=tri->GetY() && y<=tri->GetY()+tri->GetH()-1)) {
+        return true;
+    }
+    return false;
+}
+
+void Player::ResetPosition() {
+    x = 0;
+    y = 0;
 }
 
 int main()
@@ -134,6 +185,8 @@ void gameLoop()
     WINDOW * GameArea = newwin(LINES-DIALOG_HEIGHT, WIDTH, DIALOG_HEIGHT+1, 0);
     nodelay(GameArea, TRUE);
     werase(GameArea);
+    int level = 0;
+
     while (true) {
         DrawDialog(Dialog);
         for (int i = 0; i<WIDTH; ++i) {
@@ -143,8 +196,7 @@ void gameLoop()
         }
         if ((ch = getch()) == ERR) {
             continue;
-        } else {
-            if (ch == 'q') {
+        } else { if (ch == 'q') {
                 for (list<NonPlayer*>::iterator n = NonPlayerObjects.begin(); n != NonPlayerObjects.end(); ++n) {
                     delete *n;
                 }
@@ -155,8 +207,15 @@ void gameLoop()
                 case 'w':
                     werase(GameArea);
                     player.SetY(player.GetY()-1);
-                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator))) {
-                        IncrementDialogState(Dialog);
+                    NPOIterator = NonPlayerObjects.begin();
+                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator)) && NonPlayerObjects.size() == 1) {
+                        ++level;
+                        ChangeLevel(GameArea, NonPlayerObjects, level, player);
+                    }
+                    for (NPOIterator = ++NonPlayerObjects.begin(); NPOIterator != NonPlayerObjects.end(); ++NPOIterator) {
+                        if (player.HasCollidedWithTriangle(dynamic_cast<Triangle*>(*NPOIterator))) {
+                            (static_cast<Triangle*>(*NPOIterator))->hide();
+                        }
                     }
                     player.Draw(GameArea);
                     break;
@@ -164,8 +223,15 @@ void gameLoop()
                 case 's':
                     werase(GameArea);
                     player.SetY(player.GetY()+1);
-                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator))) {
-                        IncrementDialogState(Dialog);
+                    NPOIterator = NonPlayerObjects.begin();
+                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator)) && NonPlayerObjects.size() == 1) {
+                        ++level;
+                        ChangeLevel(GameArea, NonPlayerObjects, level, player);
+                    }
+                    for (NPOIterator = ++NonPlayerObjects.begin(); NPOIterator != NonPlayerObjects.end(); ++NPOIterator) {
+                        if (player.HasCollidedWithTriangle(dynamic_cast<Triangle*>(*NPOIterator))) {
+                            (static_cast<Triangle*>(*NPOIterator))->hide();
+                        }
                     }
                     player.Draw(GameArea);
                     break;
@@ -173,8 +239,15 @@ void gameLoop()
                 case 'a':
                     werase(GameArea);
                     player.SetX(player.GetX()-1);
-                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator))) {
-                        IncrementDialogState(Dialog);
+                    NPOIterator = NonPlayerObjects.begin();
+                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator)) && NonPlayerObjects.size() == 1) {
+                        ++level;
+                        ChangeLevel(GameArea, NonPlayerObjects, level, player);
+                    }
+                    for (NPOIterator = ++NonPlayerObjects.begin(); NPOIterator != NonPlayerObjects.end(); ++NPOIterator) {
+                        if (player.HasCollidedWithTriangle(dynamic_cast<Triangle*>(*NPOIterator))) {
+                            (static_cast<Triangle*>(*NPOIterator))->hide();
+                        }
                     }
                     player.Draw(GameArea);
                     break;
@@ -182,9 +255,17 @@ void gameLoop()
                 case 'd':
                     werase(GameArea);
                     player.SetX(player.GetX()+1);
-                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator))) {
-                        IncrementDialogState(Dialog);
+                    NPOIterator = NonPlayerObjects.begin();
+                    if (player.HasCollidedWithDoor(static_cast<Door*>(*NPOIterator)) && NonPlayerObjects.size() == 1) {
+                        ++level;
+                        ChangeLevel(GameArea, NonPlayerObjects, level, player);
                     }
+                    for (NPOIterator = ++NonPlayerObjects.begin(); NPOIterator != NonPlayerObjects.end(); ++NPOIterator) {
+                        if (player.HasCollidedWithTriangle(dynamic_cast<Triangle*>(*NPOIterator))) {
+                            (static_cast<Triangle*>(*NPOIterator))->hide();
+                        }
+                    }
+                    
                     player.Draw(GameArea);
                     break;
                 
@@ -200,7 +281,7 @@ void gameLoop()
 
             }
 
-        (*NPOIterator)->Draw(GameArea);
+        DrawLevel(GameArea, NonPlayerObjects);
         wnoutrefresh(GameArea);
         doupdate();
         }
@@ -211,16 +292,19 @@ void DrawDialog(WINDOW *win) {
     wclear(win);
     switch (DialogState) {
         case 0:
-            mvwprintw(win, 0, 0, "Welcome, to move around, you can use WASD. Press m to continue");
+            mvwprintw(win, 0, 0, "Welcome. To move around, you can use WASD. Press m to move dialog forward, and n to move dialog backward");
             break;
         case 1:
-            mvwprintw(win, 0, 0, "I need your help. The Triangles are coming for me. I need you to fight the triangles, and help me bring back order to the Platonic Reality.");
+            mvwprintw(win, 0, 0, "The triangles want to invade reality. You need to stop it.");
             break;
         case 2:
-            mvwprintw(win, 0, 0, "I need you to go into that door over there.");
+            mvwprintw(win, 0, 0, "I need you to imagine that rectangle is a door. Now go in it");
             break;
         case 3:
-            mvwprintw(win, 0, 0, "I need you to go into that door over there.");
+            mvwprintw(win, 0, 0, "Now go kill the representation of a triangle!");
+            break;
+        case 4:
+            mvwprintw(win, 0, 0, "Congrats! You win! Press q to get out of this piece of trash disguised as a game!");
             break;
         default:
             mvwprintw(win, 0, 0, "Well... the code is messed up");
@@ -246,10 +330,19 @@ void DecrementDialogState(WINDOW * win) {
 
 
 void DrawLevel(WINDOW * win, list<NonPlayer*> objs) {
-    switch (segment) {
-
-    }
     for (list<NonPlayer*>::iterator n = objs.begin(); n != objs.end(); ++n) {
         (*n)->Draw(win);
+    }
+}
+
+void ChangeLevel(WINDOW * win, list<NonPlayer*> &objs, int level, Player &player) {
+    switch (level) {
+        case 0:
+            break;
+        case 1:
+            objs.push_back(new Triangle(20, 10, 6, 3));
+            player.ResetPosition();
+        case 2:
+            mvwprintw(win, 0, 0, "You Win!");
     }
 }
