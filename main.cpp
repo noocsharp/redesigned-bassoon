@@ -1,62 +1,14 @@
 #include <curses.h>
 #include <list>
 #include <typeinfo>
+#include "nonplayer.h"
+#include "door.h"
+#include "triangle.h"
+#include "player.h"
 
 using std::list;
 
 
-
-class NonPlayer {
-    
-    public:
-        NonPlayer(int ix, int iy, int iw, int ih);
-        virtual void Draw(WINDOW *win);
-        int GetX() const { return x; };
-        void SetX(int ix) {x = ix;};
-        int GetY() const { return y; };
-        void SetY(int iy) {y = iy;};
-        int GetW() const { return w; };
-        void SetW(int iw) {w = iw;};
-        int GetH() const { return h; };
-        void SetH(int ih) {h = ih;};
-
-    protected:
-        int x, y, w, h;
-};
-
-class Door : public NonPlayer {
-    public:
-        Door(int ix, int iy, int iw, int ih):NonPlayer(ix, iy, iw, ih){};
-        void Draw(WINDOW *win);
-};
-
-class Triangle : public NonPlayer {
-    public:
-        Triangle(int ix, int iy, int iw, int ih):NonPlayer(ix, iy, iw, ih){hidden = false;};
-        void Draw(WINDOW *win);
-        void hide();
-
-    private:
-        bool hidden;
-};
-
-class Player {
-    public:
-        Player(int ix, int iy);
-        void Draw(WINDOW *win);
-        bool HasCollidedWithDoor(Door * door);
-        bool HasCollidedWithTriangle(Triangle * tri);
-        void ResetPosition();
-        int GetX() const { return x; };
-        void SetX(int ix) {x = ix;};
-        int GetY() const { return y; };
-        void SetY(int iy) {y = iy;};
-        int GetW() const { return w; };
-        int GetH() const { return h; };
-        
-    private:
-        int x, y, w, h;
-};
 
 void DrawDialog(WINDOW *win);
 void gameLoop();
@@ -66,100 +18,6 @@ void DrawLevel(WINDOW * win, list<NonPlayer*>);
 void ChangeLevel(WINDOW * win, list<NonPlayer*> &objs, int level, Player &player);
 int DialogState = 0;
 int DialogLength = 5;
-
-NonPlayer::NonPlayer(int ix, int iy, int iw, int ih) {
-    x = ix;
-    y = ix;
-    w = iw;
-    h = ih;
-}
-
-Player::Player(int ix, int iy) {
-    x = ix;
-    y = ix;
-    w = 3;
-    h = 3;
-}
-
-void NonPlayer::Draw(WINDOW *win) {
-    mvwaddch(win, x, y, 'N');
-}
-
-void Player::Draw(WINDOW *win) {
-    
-    mvwaddch(win, y, x+1, '@');
-    mvwaddch(win, y+1, x+1, '|');
-    mvwaddch(win, y+1, x, '-');
-    mvwaddch(win, y+1, x+2, '-');
-    mvwaddch(win, y+2, x+2, '\\');
-    mvwaddch(win, y+2, x, '/');
-}
-
-void Door::Draw(WINDOW *win) {
-    
-
-    for (int j = 0; j<h; ++j) {
-    
-        mvwaddch(win, y+j, x, '|');
-        mvwaddch(win, y+j, x+w-1, '|');
-    }
-
-    for (int i = 0; i<w; ++i) {
-        
-        mvwaddch(win, y, x+i, '-');
-        mvwaddch(win, y+h-1, x+i, '-');
-    }
-}
-
-void Triangle::hide() {
-    hidden = true;
-}
-void Triangle::Draw(WINDOW *win) {
-    if (!hidden) {
-    
-        for (int i = 0; i<w; ++i) {
-            mvwaddch(win, y+h, x+i, '_');
-        } 
-
-        if (x%2==0) {
-            for (int j = 0; j<h; ++j) {
-                mvwaddch(win, y+j+1, x+(w/2)-1-j, '/');
-                mvwaddch(win, y+j+1, x+(w/2)+1+j, '\\');
-            }
-        } else {
-            for (int j = 0; j<h; ++j) {
-                mvwaddch(win, y+j+1, x+(w/2)-1-j, '/');
-                mvwaddch(win, y+j+1, x+(w/2)+1+j, '\\');
-            }
-            mvwaddch(win, y, x, '_');
-        }
-    }
-}
-
-bool Player::HasCollidedWithDoor(Door * door) {
-    if ((x+w-1>=door->GetX() && x+w-1<=door->GetX()+door->GetW()-1 && y+h-1>=door->GetY() && y+h-1<=door->GetY()+door->GetH()-1) ||
-        (x>=door->GetX() && x<=door->GetX()+door->GetW()-1 && y+h-1>=door->GetY() && y+h-1<=door->GetY()+door->GetH()-1) ||
-        (x>=door->GetX() && x<=door->GetX()+door->GetW()-1 && y>=door->GetY() && y<=door->GetY()+door->GetH()-1) ||
-        (x+w-1>=door->GetX() && x+w-1<=door->GetX()+door->GetW()-1 && y>=door->GetY() && y<=door->GetY()+door->GetH()-1)) {
-        return true;
-    }
-    return false;
-}
-
-bool Player::HasCollidedWithTriangle(Triangle * tri) {
-    if ((x+w-1>=tri->GetX() && x+w-1<=tri->GetX()+tri->GetW()-1 && y+h-1>=tri->GetY() && y+h-1<=tri->GetY()+tri->GetH()-1) ||
-        (x>=tri->GetX() && x<=tri->GetX()+tri->GetW()-1 && y+h-1>=tri->GetY() && y+h-1<=tri->GetY()+tri->GetH()-1) ||
-        (x>=tri->GetX() && x<=tri->GetX()+tri->GetW()-1 && y>=tri->GetY() && y<=tri->GetY()+tri->GetH()-1) ||
-        (x+w-1>=tri->GetX() && x+w-1<=tri->GetX()+tri->GetW()-1 && y>=tri->GetY() && y<=tri->GetY()+tri->GetH()-1)) {
-        return true;
-    }
-    return false;
-}
-
-void Player::ResetPosition() {
-    x = 0;
-    y = 0;
-}
 
 int main()
 {
