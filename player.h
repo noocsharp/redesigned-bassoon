@@ -1,3 +1,4 @@
+#pragma once
 #include "curses.h"
 #include "door.h"
 #include "triangle.h"
